@@ -1,0 +1,19 @@
+# --- Python ---
+venv/
+__pycache__/
+*.py[cod]
+
+# --- C Compiled Binaries ---
+# General patterns
+*.exe
+*.out
+*.o
+*.obj
+
+# --- OS Generated Files ---
+.DS_Store
+Thumbs.db
+
+# --- IDE Specific (Optional but recommended) ---
+.vscode/
+.idea/
