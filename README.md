@@ -77,12 +77,11 @@ gcc cgoa2.c cec17_test_func.c -o cgoa2_bench -lm
 
 The `plot_results.py` script performs comparative analysis. It automatically loads `goa_cec17_results.csv` as the baseline and plots the variant side-by-side on a logarithmic scale.
 
-Navigate to the `scripts` folder and provide the variant filename and desired output image name.
+Provide the variant filename and desired output image name.
 
 **Compare CGOA1 vs Baseline:**
 
 ```bash
-cd ../scripts
 python3 plot_results.py cgoa1_cec17_results.csv cgoa1_vs_goa.png
 ```
 
