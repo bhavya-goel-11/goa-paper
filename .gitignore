@@ -10,6 +10,12 @@ __pycache__/
 *.o
 *.obj
 
+# Compiled benchmark executables (extensionless binaries generated in src/)
+/src/*
+!/src/*.c
+!/src/*.h
+!/src/*.py
+
 # --- OS Generated Files ---
 .DS_Store
 Thumbs.db

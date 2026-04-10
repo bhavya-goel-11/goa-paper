@@ -2,29 +2,68 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-// --- 1. CEC17 Declaration & Wrapper ---
-// External declaration for the CEC17 benchmark function
-void cec17_test_func(double *x, double *f, int nx, int mx, int func_num);
+// --- 1. Macro-Driven CEC Wrapper ---
+// The compiler flag (e.g., -D CEC_YEAR=2014) decides which suite gets linked.
+#if CEC_YEAR == 2014
+    void cec14_test_func(double *x, double *f, int nx, int mx, int func_num);
+    double evaluate(double *solution, int dim, int func_num) {
+        double fitness = 0.0;
+        cec14_test_func(solution, &fitness, dim, 1, func_num);
+        return fitness;
+    }
+    #define NUM_FUNCS 30
 
-double evaluate_cec17(double *solution, int dim, int func_num) {
-    double fitness_value = 0.0;
-    cec17_test_func(solution, &fitness_value, dim, 1, func_num);
-    return fitness_value;
-}
+#elif CEC_YEAR == 2017
+    void cec17_test_func(double *x, double *f, int nx, int mx, int func_num);
+    double evaluate(double *solution, int dim, int func_num) {
+        double fitness = 0.0;
+        cec17_test_func(solution, &fitness, dim, 1, func_num);
+        return fitness;
+    }
+    #define NUM_FUNCS 30
 
-// --- 2. Math Utilities ---
-double rand_01() {
-    return (double)rand() / (double)RAND_MAX;
-}
+#elif CEC_YEAR == 2020
+    void cec20_test_func(double *x, double *f, int nx, int mx, int func_num);
+    double evaluate(double *solution, int dim, int func_num) {
+        double fitness = 0.0;
+        cec20_test_func(solution, &fitness, dim, 1, func_num);
+        return fitness;
+    }
+    #define NUM_FUNCS 10
+
+#elif CEC_YEAR == 2022
+    void cec22_test_func(double *x, double *f, int nx, int mx, int func_num);
+    double evaluate(double *solution, int dim, int func_num) {
+        double fitness = 0.0;
+        cec22_test_func(solution, &fitness, dim, 1, func_num);
+        return fitness;
+    }
+    #define NUM_FUNCS 12
+
+#elif CEC_YEAR == 9999
+    void eng_test_func(double *x, double *f, int nx, int mx, int func_num);
+    void get_eng_bounds(int func_num, int *dim, double *lb, double *ub);
+    double evaluate(double *solution, int dim, int func_num) {
+        double fitness = 0.0;
+        eng_test_func(solution, &fitness, dim, 1, func_num);
+        return fitness;
+    }
+    #define NUM_FUNCS 5
+#else
+    #error "CRITICAL: You must define a valid CEC_YEAR during compilation (e.g., -D CEC_YEAR=2014)"
+#endif
+
+// --- 2. Shared Math Utilities ---
+double rand_01() { return (double)rand() / (double)RAND_MAX; }
 
 double rand_normal() {
-    double u1 = rand_01();
-    double u2 = rand_01();
+    double u1 = rand_01(), u2 = rand_01();
     if (u1 <= 1e-7) u1 = 1e-7; 
     return sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2);
 }
@@ -39,95 +78,72 @@ double levy_flight(double alpha) {
     return 0.05 * (u / pow(fabs(v), 1.0 / beta));
 }
 
-// --- 3. Main GOA Algorithm ---
-// Notice the return type is now 'double' and it accepts 'func_num'
-double run_goa(int pop_size, int dim, int max_iter, double LB, double UB, int func_num) {
-    double S = 88.0; 
-    double PSRs = 0.34;
-    double s_step, mu, r, CF;
+// --- 3. Original GOA Algorithm ---
+// Swapped scalar bounds for array bounds: double *LB, double *UB
+double run_goa(int pop_size, int dim, int max_iter, double *LB, double *UB, int func_num, double *convergence_history) {
+    double S = 88.0, PSRs = 0.34, s_step, mu, r, CF;
     
-    // Memory Allocation
     double **gazelle = (double **)malloc(pop_size * sizeof(double *));
     double *fitness = (double *)malloc(pop_size * sizeof(double));
     double *elite = (double *)malloc(dim * sizeof(double));
     double best_fitness = INFINITY;
 
-    // Initialization
     for (int i = 0; i < pop_size; i++) {
         gazelle[i] = (double *)malloc(dim * sizeof(double));
-        for (int j = 0; j < dim; j++) {
-            gazelle[i][j] = LB + rand_01() * (UB - LB);
-        }
-        // FIXED: Using evaluate_cec17 instead of calculate_fitness
-        fitness[i] = evaluate_cec17(gazelle[i], dim, func_num); 
-        
+        for (int j = 0; j < dim; j++) gazelle[i][j] = LB[j] + rand_01() * (UB[j] - LB[j]);
+        fitness[i] = evaluate(gazelle[i], dim, func_num); 
         if (fitness[i] < best_fitness) {
             best_fitness = fitness[i];
             for(int j = 0; j < dim; j++) elite[j] = gazelle[i][j];
         }
     }
 
-    // Optimization Loop
     for (int iter = 1; iter <= max_iter; iter++) {
         s_step = rand_01();
-        
         for (int i = 0; i < pop_size; i++) {
             r = rand_01();
             double *new_pos = (double *)malloc(dim * sizeof(double));
             
             if (r < 0.5) {
-                // Exploitation
                 for (int j = 0; j < dim; j++) {
-                    double R = rand_01();
-                    double R_B = rand_normal();
+                    double R = rand_01(), R_B = rand_normal();
                     new_pos[j] = gazelle[i][j] + s_step * R * R_B * (elite[j] - R_B * gazelle[i][j]);
                 }
             } else {
-                // Exploration
                 mu = (iter % 2 == 0) ? -1.0 : 1.0;
                 CF = pow(1.0 - (double)iter / max_iter, 2.0 * (double)iter / max_iter);
-                
                 if (i < pop_size / 2) {
                     for (int j = 0; j < dim; j++) {
-                        double R = rand_01();
-                        double R_L = levy_flight(1.5);
+                        double R = rand_01(), R_L = levy_flight(1.5);
                         new_pos[j] = gazelle[i][j] + S * mu * R * R_L * (elite[j] - R_L * gazelle[i][j]);
                     }
                 } else {
                     for (int j = 0; j < dim; j++) {
-                        double R_B = rand_normal();
-                        double R_L = levy_flight(1.5);
+                        double R_B = rand_normal(), R_L = levy_flight(1.5);
                         new_pos[j] = gazelle[i][j] + S * mu * CF * R_B * (elite[j] - R_L * gazelle[i][j]);
                     }
                 }
             }
             
-            // Apply PSRs Effect
             double r_psr = rand_01();
-            int r1 = rand() % pop_size;
-            int r2 = rand() % pop_size;
+            int r1 = rand() % pop_size, r2 = rand() % pop_size;
             
             for (int j = 0; j < dim; j++) {
                 if (r_psr <= PSRs) {
                     double U = (rand_01() < 0.5) ? 0.0 : 1.0; 
-                    double R = rand_01();
-                    new_pos[j] = new_pos[j] + CF * (LB + R * (UB - LB)) * U;
+                    new_pos[j] += CF * (LB[j] + rand_01() * (UB[j] - LB[j])) * U;
                 } else {
-                    new_pos[j] = new_pos[j] + (PSRs * (1.0 - r_psr) + r_psr) * (gazelle[r1][j] - gazelle[r2][j]);
+                    new_pos[j] += (PSRs * (1.0 - r_psr) + r_psr) * (gazelle[r1][j] - gazelle[r2][j]);
                 }
-                
-                // Boundary Check
-                if (new_pos[j] > UB) new_pos[j] = UB;
-                if (new_pos[j] < LB) new_pos[j] = LB;
+                // Array boundary clamping
+                if (new_pos[j] > UB[j]) new_pos[j] = UB[j];
+                if (new_pos[j] < LB[j]) new_pos[j] = LB[j];
             }
             
-            // Fitness Evaluation
-            // FIXED: Using evaluate_cec17 instead of calculate_fitness
-            double new_fit = evaluate_cec17(new_pos, dim, func_num);
+            double new_fit = evaluate(new_pos, dim, func_num);
             if (new_fit < fitness[i]) {
                 fitness[i] = new_fit;
                 for (int j = 0; j < dim; j++) gazelle[i][j] = new_pos[j];
-                
                 if (fitness[i] < best_fitness) {
                     best_fitness = fitness[i];
                     for (int j = 0; j < dim; j++) elite[j] = gazelle[i][j];
@@ -135,74 +151,104 @@ double run_goa(int pop_size, int dim, int max_iter, double LB, double UB, int fu
             }
             free(new_pos);
         }
+        convergence_history[iter - 1] = best_fitness;
     }
     
-    // Free Memory
     for (int i = 0; i < pop_size; i++) free(gazelle[i]);
-    free(gazelle);
-    free(fitness);
-    free(elite);
+    free(gazelle); free(fitness); free(elite);
     
-    // Return the best fitness found in this run
     return best_fitness;
 }
 
-// --- 4. The CEC17 Test Harness ---
+// --- 4. The Isolated Test Harness ---
 int main() {
     srand(time(NULL)); 
     
-    int pop_size = 50;  
-    int dim = 30;       
-    int max_iter = 1000; 
-    double LB = -100.0; 
-    double UB = 100.0;  
-    int num_runs = 30;  
+    char algo_name[] = "goa"; // Set specifically for the baseline
+    int pop_size = 50, max_iter = 1200, num_runs = 50; 
     
-    // Create the CSV file
-    FILE *fp = fopen("../results/goa_cec17_results.csv", "w");
-    if (fp == NULL) {
-        printf("Error opening file! Check your directory permissions.\n");
+    printf("--- STARTING BENCHMARK: %s | SUITE: %d ---\n", algo_name, CEC_YEAR);
+    
+    char sum_path[200], raw_path[200], conv_path[200];
+    if (CEC_YEAR == 9999) {
+        sprintf(sum_path, "../results/%s/engineering/summary.csv", algo_name);
+        sprintf(raw_path, "../results/%s/engineering/raw.csv", algo_name);
+        sprintf(conv_path, "../results/%s/engineering/convergence.csv", algo_name);
+    } else {
+        sprintf(sum_path, "../results/%s/cec%d/summary.csv", algo_name, CEC_YEAR);
+        sprintf(raw_path, "../results/%s/cec%d/raw.csv", algo_name, CEC_YEAR);
+        sprintf(conv_path, "../results/%s/cec%d/convergence.csv", algo_name, CEC_YEAR);
+    }
+    
+    FILE *fp_summary = fopen(sum_path, "w");
+    FILE *fp_raw = fopen(raw_path, "w");
+    FILE *fp_conv = fopen(conv_path, "w");
+    
+    if (!fp_summary || !fp_raw || !fp_conv) {
+        printf("ERROR: Could not open folders! Did you run 'mkdir -p ../results/%s/...'?\n", algo_name);
         return 1;
     }
-    fprintf(fp, "Function,Best,Worst,Mean,StdDev\n");
     
-    printf("Starting Mass Benchmark Test (This might take a few minutes)...\n\n");
+    fprintf(fp_summary, "Function,Best,Worst,Mean,StdDev\n");
     
-    // Loop through all 30 CEC17 functions
-    for (int func_num = 1; func_num <= 30; func_num++) {
-        if (func_num == 2) continue; // Skip F2 (officially excluded by CEC)
+    for (int func_num = 1; func_num <= NUM_FUNCS; func_num++) {
+        if (CEC_YEAR == 2017 && func_num == 2) continue; // Official CEC17 Exclusion
         
-        printf("Optimizing Function F%d...\n", func_num);
+        printf("  -> Optimizing Function F%d...\n", func_num);
         
-        double results[30]; // Must match num_runs
+        // --- DYNAMIC BOUNDARY & DIMENSION ALLOCATION ---
+        int dim; 
+        double LB[100], UB[100]; // Max supported dimension length
+        
+        #if CEC_YEAR == 9999
+            get_eng_bounds(func_num, &dim, LB, UB);
+        #else
+            #if CEC_YEAR == 2020 || CEC_YEAR == 2022
+                dim = 20; // Max official D for these years
+            #else
+                dim = 30; // Standard D for 2014/2017
+            #endif
+            for(int i = 0; i < dim; i++) { LB[i] = -100.0; UB[i] = 100.0; }
+        #endif
+        
+        double raw_results[50]; 
+        double mean_history[1200] = {0};
         double sum = 0.0, best = INFINITY, worst = -INFINITY;
         
-        // 30 independent runs
+        fprintf(fp_raw, "F%d", func_num);
+        fprintf(fp_conv, "F%d", func_num);
+        
         for (int run = 0; run < num_runs; run++) {
-            double fit = run_goa(pop_size, dim, max_iter, LB, UB, func_num);
-            results[run] = fit;
+            double run_history[1200] = {0};
+            
+            // Calling the baseline run_goa function with Arrays
+            double fit = run_goa(pop_size, dim, max_iter, LB, UB, func_num, run_history);
+            
+            raw_results[run] = fit;
             sum += fit;
             if (fit < best) best = fit;
             if (fit > worst) worst = fit;
+            
+            fprintf(fp_raw, ",%.5e", fit); 
+            for(int i = 0; i < max_iter; i++) mean_history[i] += run_history[i];
         }
+        fprintf(fp_raw, "\n");
         
-        // Calculate Mean
-        double mean = sum / num_runs;
-        
-        // Calculate Standard Deviation
-        double variance = 0.0;
-        for (int run = 0; run < num_runs; run++) {
-            variance += (results[run] - mean) * (results[run] - mean);
+        for(int i = 0; i < max_iter; i++) {
+            mean_history[i] /= num_runs;
+            fprintf(fp_conv, ",%.5e", mean_history[i]);
         }
+        fprintf(fp_conv, "\n");
+        
+        double mean = sum / num_runs, variance = 0.0;
+        for (int run = 0; run < num_runs; run++) variance += (raw_results[run] - mean) * (raw_results[run] - mean);
         double stddev = sqrt(variance / num_runs);
         
-        // Write to CSV and console
-        fprintf(fp, "F%d,%.5e,%.5e,%.5e,%.5e\n", func_num, best, worst, mean, stddev);
-        printf("   -> Mean: %.5e | StdDev: %.5e\n", mean, stddev);
+        fprintf(fp_summary, "F%d,%.5e,%.5e,%.5e,%.5e\n", func_num, best, worst, mean, stddev);
     }
     
-    fclose(fp);
-    printf("\nAll 30 runs completed successfully! Data saved to 'results/goa_cec17_results.csv'.\n");
+    fclose(fp_summary); fclose(fp_raw); fclose(fp_conv);
+    printf("Suite Completed for %s.\n", algo_name);
     
     return 0;
 }
