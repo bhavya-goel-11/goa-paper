@@ -7,7 +7,7 @@ from scipy.stats import ranksums
 
 # --- Configuration & Paths ---
 PROPOSED_ALGO = "cgoa1"
-COMPETITORS = ["goa", "pso", "gwo", "woa", "sns", "sca"]
+COMPETITORS = ["goa", "pso", "gwo", "woa", "sns", "sca", "dea", "abc"]
 ALL_ALGOS = [PROPOSED_ALGO] + COMPETITORS
 SUITES = ["cec2014", "cec2017", "cec2020", "cec2022", "engineering"]
 
